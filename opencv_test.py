@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 
 # Load image
-image = cv2.imread("cv_image.jpg")
+image = cv2.imread("image.jpg")
 height, width, _ = image.shape
 
 # Convert to grayscale
