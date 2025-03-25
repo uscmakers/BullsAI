@@ -1,26 +1,28 @@
 import cv2
 import numpy as np
 
+
+def normalize_point(point, perspective_matrix):
+    """Apply the perspective transform to a single point."""
+    homogenous = np.array([point[0], point[1], 1])
+    norm_pt = perspective_matrix @ homogenous
+    norm_pt /= norm_pt[2]
+    return (int(norm_pt[0]), int(norm_pt[1]))
+
 def normalize_coordinates(aruco_points, led_position, board_size=(800, 800)):
     """
-    Normalize coordinates from camera view to standardized dartboard coordinates
-    
-    Args:
-    - aruco_points: Dictionary of ArUco marker centers {marker_id: (x, y)}
-    - led_position: (x, y) of the LED/dart position
-    - board_size: Size of the normalized coordinate system
+    Normalize coordinates from camera view to standardized dartboard coordinates.
     
     Returns:
-    - Normalized coordinates on the dartboard
+    - Normalized LED point
+    - Perspective transform matrix for further use
     """
-    # Order points in a consistent manner (top-left, top-right, bottom-right, bottom-left)
-    # This assumes you know which marker corresponds to which corner
-    # You might need to adjust the order based on your specific marker placement
+    # Order points (make sure your marker IDs match your expected order)
     src_points = np.float32([
         aruco_points[marker_id] for marker_id in sorted(aruco_points.keys())
     ])
     
-    # Destination points (normalized board coordinates)
+    # Destination points for the normalized board
     dst_points = np.float32([
         [0, 0],  # Top-left
         [board_size[0], 0],  # Top-right
@@ -28,38 +30,23 @@ def normalize_coordinates(aruco_points, led_position, board_size=(800, 800)):
         [0, board_size[1]]  # Bottom-left
     ])
     
-    # Compute perspective transform
+    # Compute perspective transform matrix
     perspective_matrix = cv2.getPerspectiveTransform(src_points, dst_points)
     
     # Transform LED position
-    led_homography = np.array([led_position[0], led_position[1], 1])
-    normalized_point = perspective_matrix @ led_homography
-    
-    # Normalize the point
-    normalized_point /= normalized_point[2]
-    print(int(normalized_point[0]), int(normalized_point[1]))
-    return (int(normalized_point[0]), int(normalized_point[1]))
+    normalized_led = normalize_point(led_position, perspective_matrix)
+    print("Normalized LED:", normalized_led)
+    return normalized_led, perspective_matrix
 
 def calculate_dart_score(normalized_point, board_size=(800, 800)):
     """
-    Calculate dart score based on normalized coordinates
-    
-    Args:
-    - normalized_point: (x, y) of normalized dart position
-    - board_size: Size of the normalized coordinate system
-    
-    Returns:
-    - Dart score
+    Calculate dart score based on normalized coordinates.
     """
-    # Calculate distance from center
     center_x, center_y = board_size[0] // 2, board_size[1] // 2
-    distance = np.sqrt(
-        ((normalized_point[0] - center_x) ** 2) + 
-        ((normalized_point[1] - center_y) ** 2)
-    )
+    distance = np.sqrt((normalized_point[0] - center_x) ** 2 + 
+                       (normalized_point[1] - center_y) ** 2)
     
-    # Define scoring zones (these are approximate and should be calibrated)
-    # Zones are proportional to board radius
+    # Define scoring zones (approximate, should be calibrated)
     radius = board_size[0] // 2
     scoring_zones = [
         (radius * 0.1, 50),   # Bullseye
@@ -69,152 +56,122 @@ def calculate_dart_score(normalized_point, board_size=(800, 800)):
         (radius, 0)           # Miss
     ]
     
-    # Determine score based on distance
     for zone_radius, score in scoring_zones:
         if distance <= zone_radius:
             return score
-    
     return 0  # Miss
 
-# Example usage in your main script
-def process_dart_throw(image, aruco_reference_points, led_position):
-    # Normalize LED position
-    normalized_point = normalize_coordinates(aruco_reference_points, led_position)
+def process_dart_throw(image, aruco_reference_points, led_position, board_size=(800, 800)):
+    normalized_led, perspective_matrix = normalize_coordinates(aruco_reference_points, led_position, board_size)
+    dart_score = calculate_dart_score(normalized_led, board_size)
     
-    # Calculate score
-    dart_score = calculate_dart_score(normalized_point)
+    # Normalize all ArUco marker centers
+    normalized_markers = {}
+    for marker_id, center in aruco_reference_points.items():
+        normalized_markers[marker_id] = normalize_point(center, perspective_matrix)
     
-    print(f"Normalized Point: {normalized_point}")
-    print(f"Dart Score: {dart_score}")
+    # Compute average (center) of the four markers
+    avg_x = int(sum(pt[0] for pt in normalized_markers.values()) / len(normalized_markers))
+    avg_y = int(sum(pt[1] for pt in normalized_markers.values()) / len(normalized_markers))
+    normalized_center = (avg_x, avg_y)
     
-    return normalized_point, dart_score
+    # Use warpPerspective to get a normalized view of the original image
+    normalized_board = cv2.warpPerspective(image, perspective_matrix, board_size)
+    
+    # Draw normalized marker centers on the warped image
+    for marker_id, pt in normalized_markers.items():
+        cv2.circle(normalized_board, pt, 5, (0, 255, 0), -1)
+        cv2.putText(normalized_board, f"ID:{marker_id}", (pt[0]+5, pt[1]), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 2)
+    
+    # Draw the computed normalized center
+    cv2.circle(normalized_board, normalized_center, 7, (0, 0, 255), -1)
+    cv2.putText(normalized_board, "Center", (normalized_center[0]+10, normalized_center[1]), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+    
+    # Optionally, also draw the normalized LED point for reference
+    cv2.circle(normalized_board, normalized_led, 5, (255, 0, 0), -1)
+    cv2.putText(normalized_board, "LED", (normalized_led[0]+5, normalized_led[1]), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+    
+    # Display the warped (normalized) image
+    cv2.imshow("Normalized Dartboard", normalized_board)
+    cv2.waitKey(0)
+    cv2.destroyWindow("Normalized Dartboard")
+    
+    return normalized_led, dart_score
 
+
+# ------------------ (Rest of your detection code remains unchanged) ------------------ #
 
 # Load image
 image = cv2.imread("newimage.JPEG")
 height, width, _ = image.shape
-
-# Make a copy of the original image for visualization
 output_image = image.copy()
 
-# ------------ ARUCO DETECTION (REFERENCE POINTS) ------------
-# Convert to grayscale
+# ARUCO DETECTION
 gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-# Create dictionary - DICT_ARUCO_ORIGINAL
 dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_ARUCO_ORIGINAL)
-
-# Create parameters with adaptiveThreshConstant = 3
 parameters = cv2.aruco.DetectorParameters()
 parameters.adaptiveThreshConstant = 3
-
-# Create detector
 detector = cv2.aruco.ArucoDetector(dictionary, parameters)
-
-# Detect markers
 corners, ids, rejected = detector.detectMarkers(gray)
 
-# Create a coordinate system from ArUco markers
 aruco_reference_points = {}
-aruco_corner_points = []  # Store all corner points for boundary calculation
+aruco_corner_points = []
 
 if ids is not None and len(ids) > 0:
     print(f"Successfully detected {len(ids)} ArUco markers")
-    
-    # Draw markers on the output image
     cv2.aruco.drawDetectedMarkers(output_image, corners, ids)
     
-    # Store the center and corners of each marker
     for i, corner in enumerate(corners):
-        # Calculate center point (for visualization and reference)
         center_x = int(corner[0][:, 0].mean())
         center_y = int(corner[0][:, 1].mean())
         marker_id = ids[i][0]
-        
-        # Store marker centers in dictionary (for reference)
         aruco_reference_points[marker_id] = (center_x, center_y)
-        
-        # Add ID text at marker center
         cv2.putText(output_image, f"ID:{marker_id}", (center_x-20, center_y), 
-                  cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-        
-        # Extract all four corner points of each marker
-        for corner_point in corner[0]:
-            aruco_corner_points.append(corner_point)
-    print(aruco_reference_points)
-    # If we have detected ArUco markers, compute dartboard boundary using outer corners
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+        for pt in corner[0]:
+            aruco_corner_points.append(pt)
+    
+    print("Aruco Reference Points:", aruco_reference_points)
+    
+    # (Optional) Draw the convex hull of all marker corners as before
     if len(aruco_corner_points) > 0:
-        # Convert to numpy array
         aruco_corner_points = np.array(aruco_corner_points, dtype=np.int32)
-        
-        # Compute the convex hull or bounding area of the outer corners of markers
         hull = cv2.convexHull(aruco_corner_points)
         cv2.polylines(output_image, [hull], True, (0, 255, 255), 2)
+    
+    # ------------ LED DETECTION ------------
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    _, thresh = cv2.threshold(blurred, 245, 255, cv2.THRESH_BINARY)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    led_position = None
+    
+    for contour in contours:
+        (x, y, w, h) = cv2.boundingRect(contour)
+        if 0 <= x <= int(0.1 * width) or int(0.9 * width) <= x <= width:
+            continue
+        if 0 <= y <= int(0.1 * height) or int(0.9 * height) <= y <= height:
+            continue
+        if w < 25 or h < 25:
+            continue
         
-        # Calculate the approximate center of the dartboard
-        # (based on the geometric center of the convex hull)
-        M = cv2.moments(hull)
-        if M["m00"] != 0:
-            dartboard_center_x = int(M["m10"] / M["m00"])
-            dartboard_center_y = int(M["m01"] / M["m00"])
-        else:
-            # Fallback to mean of corner points
-            dartboard_center_x = int(np.mean(aruco_corner_points[:, 0]))
-            dartboard_center_y = int(np.mean(aruco_corner_points[:, 1]))
-            
-        cv2.circle(output_image, (dartboard_center_x, dartboard_center_y), 5, (255, 0, 255), -1)
-        cv2.putText(output_image, "Est. Dartboard Center", (dartboard_center_x+10, dartboard_center_y), 
-                  cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 2)
+        led_center = (x + w//2, y + h//2)
+        led_position = led_center
+        cv2.rectangle(output_image, (x, y), (x+w, y+h), (0, 255, 0), 4)
+        cv2.putText(output_image, "LED", (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
         
-        # ------------ LED DETECTION ------------
-        # Apply Gaussian blur
-        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-        
-        # Apply thresholding
-        _, thresh = cv2.threshold(blurred, 245, 255, cv2.THRESH_BINARY)
-        
-        # Find contours for LED
-        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        # Variables to store LED position
-        led_position = None
-        
-        for contour in contours:
-            (x, y, w, h) = cv2.boundingRect(contour)
-            # Ignore borders
-            if 0 <= x <= int(0.1 * width) or int(0.9 * width) <= x <= width:
-                continue
-            if 0 <= y <= int(0.1 * height) or int(0.9 * height) <= y <= height:
-                continue
-            # Ignore small boxes (noise)
-            if w < 25 or h < 25:
-                continue
-            
-            # Store LED center
-            led_center_x = x + w//2
-            led_center_y = y + h//2
-            led_position = (led_center_x, led_center_y)
-            
-            # Draw LED
-            cv2.rectangle(output_image, (x, y), (x + w, y + h), (0, 255, 0), 4)
-            cv2.putText(output_image, "LED", (x, y-10), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-            
-            #Score:
-            if led_position:
-                normalized_point, dart_score = process_dart_throw(output_image, aruco_reference_points, led_position)
-
-                # Optionally, visualize the normalized point
-                cv2.circle(output_image, (normalized_point[0] + aruco_reference_points[1][0], normalized_point[1] + aruco_reference_points[1][1]), 5, (0, 0, 255), -1)
-                cv2.putText(output_image, f"Score: {dart_score}", 
-                    (normalized_point[0]+10, normalized_point[1]), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-        
+        if led_position:
+            normalized_led, dart_score = process_dart_throw(output_image, aruco_reference_points, led_position)
+            # Optionally, mark the LED on the original image as well
+            cv2.circle(output_image, led_position, 5, (255, 0, 0), -1)
+            cv2.putText(output_image, f"Score: {dart_score}", (led_position[0]+10, led_position[1]), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+            break
 else:
     print("No ArUco markers detected")
 
-# Show result
 cv2.imshow("Dartboard Analysis", output_image)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
-
