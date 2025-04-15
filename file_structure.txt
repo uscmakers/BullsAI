@@ -1,0 +1,52 @@
+# main.py
+"""
+initialize game object
+initialize gpio
+
+game.run()
+"""
+
+# camera.py
+
+"""
+constructor, destructor, capture, saveToFile
+"""
+
+# game.py
+"""
+__init__:
+    initialize camera object
+    playerScore
+    robotScore
+    gameState (human throwing, robot throwing)
+    gpio robotThrowing
+    imgNum = 0
+    darts = {}
+
+run():
+    while true:
+        gameState = robotThrowing
+        every x seconds:
+            newDartScore = newDartScore()
+            if newDartScore != -1:
+                if gameState == robotThrowing:
+                    robotScore += newDartScore
+                else:
+                    humanThrowing += newDartScore
+
+newDartScore():
+    camera.capture_to_file(imgNum++)
+    if newDartDetected() != [-1, -1]:
+        calculateDartScore()
+        
+        
+    
+newDartDetected():
+    for dart in img.darts:
+        if dart not in self.darts:
+            return [dart_x, dart_y]
+    return [-1, -1]
+
+
+"""
+
