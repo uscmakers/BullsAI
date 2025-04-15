@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-
+import math
 
 def normalize_point(point, perspective_matrix):
     """Apply the perspective transform to a single point."""
@@ -9,7 +9,7 @@ def normalize_point(point, perspective_matrix):
     norm_pt /= norm_pt[2]
     return (int(norm_pt[0]), int(norm_pt[1]))
 
-def normalize_coordinates(aruco_points, led_position, board_size=(800, 800)):
+def normalize_coordinates(aruco_points, led_position, board_size=(1000, 1000)):
     """
     Normalize coordinates from camera view to standardized dartboard coordinates.
     
@@ -38,30 +38,97 @@ def normalize_coordinates(aruco_points, led_position, board_size=(800, 800)):
     print("Normalized LED:", normalized_led)
     return normalized_led, perspective_matrix
 
-def calculate_dart_score(normalized_point, board_size=(800, 800)):
+def calculate_dart_score(normalized_point, board_size=(1000, 1000)):
     """
     Calculate dart score based on normalized coordinates.
     """
     center_x, center_y = board_size[0] // 2, board_size[1] // 2
+    print("Center:", center_x, center_y)
     distance = np.sqrt((normalized_point[0] - center_x) ** 2 + 
                        (normalized_point[1] - center_y) ** 2)
     
-    # Define scoring zones (approximate, should be calibrated)
-    radius = board_size[0] // 2
-    scoring_zones = [
-        (radius * 0.1, 50),   # Bullseye
-        (radius * 0.3, 25),   # Inner bullseye
-        (radius * 0.5, 20),   # Triples ring
-        (radius * 0.7, 1),    # Outer rings scoring 1-20
-        (radius, 0)           # Miss
-    ]
-    
-    for zone_radius, score in scoring_zones:
-        if distance <= zone_radius:
-            return score
-    return 0  # Miss
+    dx = normalized_point[0] - center_x
+    dy = center_y - normalized_point[1]  # Invert y-axis for image coordinates
+    print("dx, dy", dx, dy)
+    angle = math.degrees(math.atan2(dy, dx))
+    if angle < 0:
+        angle += 360
 
-def process_dart_throw(image, aruco_reference_points, led_position, board_size=(800, 800)):
+    print("Distance:", distance, "\nAngle:", angle)
+    score = 0
+    if (0 <= angle < 9) or (351 <= angle <= 360):
+        score = 6
+    elif 9 <= angle < 27:
+        score = 13
+    elif 27 <= angle < 45:
+        score = 4
+    elif 45 <= angle < 63:
+        score = 18
+    elif 63 <= angle < 81:
+        score = 1
+    elif 81 <= angle < 99:
+        score = 20
+    elif 99 <= angle < 117:
+        score = 5
+    elif 117 <= angle < 135:
+        score = 12
+    elif 135 <= angle < 153:
+        score = 9
+    elif 153 <= angle < 171:
+        score = 14
+    elif 171 <= angle < 189:
+        score = 11
+    elif 189 <= angle < 207:
+        score = 8
+    elif 207 <= angle < 225:
+        score = 16
+    elif 225 <= angle < 243:
+        score = 7
+    elif 243 <= angle < 261:
+        score = 19
+    elif 261 <= angle < 279:
+        score = 3
+    elif 279 <= angle < 297:
+        score = 17
+    elif 297 <= angle < 315:
+        score = 2
+    elif 315 <= angle < 333:
+        score = 15
+    elif 333 <= angle < 351:
+        score = 10
+    #Distances (comparing center to right side of oval)
+    #bullseye - inner within 20, outer within 40
+    #3x - 125 to 150
+    #2x - 200 to 230
+
+    #comparing center to top of oval
+    #bullseye - inner within 20, outer within 40
+    #3x - 220 to 250
+    #2x - 350 to 390
+
+    #scale factor is 1.75 (oval is 1.75x taller than it is wide)
+    if distance <= 20:
+        score = 50
+    elif distance <= 40:
+        score = 25
+    else:
+        triple_boundary_low = 1.75 * math.sin(angle * math.pi / 180) * 125
+        triple_boundary_high = 1.75 * math.sin(angle * math.pi / 180) * 150
+        double_boundary_low = 1.75 * math.sin(angle * math.pi / 180) * 200
+        double_boundary_high = 1.75 * math.sin(angle * math.pi / 180) * 230
+        if triple_boundary_low <= distance <= triple_boundary_high:
+            score *= 3
+        elif double_boundary_low <= distance <= double_boundary_high:
+            score *= 2
+        elif distance > double_boundary_high:
+            score = 0
+        #print("triple_boundary_low, triple_boundary_high", triple_boundary_low, triple_boundary_high)
+        #print("double_boundary_low, double_boundary_high", double_boundary_low, double_boundary_high)
+
+    print("Corresponding score", score)
+    return score
+
+def process_dart_throw(image, aruco_reference_points, led_position, board_size=(1000, 1000)):
     normalized_led, perspective_matrix = normalize_coordinates(aruco_reference_points, led_position, board_size)
     dart_score = calculate_dart_score(normalized_led, board_size)
     
@@ -94,7 +161,10 @@ def process_dart_throw(image, aruco_reference_points, led_position, board_size=(
     cv2.putText(normalized_board, "LED", (normalized_led[0]+5, normalized_led[1]), 
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
     
-    # Display the warped (normalized) image
+    #Coordinate testing
+    #cv2.circle(normalized_board, (500, 110), 5, (255, 255, 255), -1)
+    
+
     cv2.imshow("Normalized Dartboard", normalized_board)
     cv2.waitKey(0)
     cv2.destroyWindow("Normalized Dartboard")
@@ -102,10 +172,8 @@ def process_dart_throw(image, aruco_reference_points, led_position, board_size=(
     return normalized_led, dart_score
 
 
-# ------------------ (Rest of your detection code remains unchanged) ------------------ #
-
 # Load image
-image = cv2.imread("newimage.JPEG")
+image = cv2.imread("makersimg.jpeg")
 height, width, _ = image.shape
 output_image = image.copy()
 
@@ -121,7 +189,6 @@ aruco_reference_points = {}
 aruco_corner_points = []
 
 if ids is not None and len(ids) > 0:
-    print(f"Successfully detected {len(ids)} ArUco markers")
     cv2.aruco.drawDetectedMarkers(output_image, corners, ids)
     
     for i, corner in enumerate(corners):
@@ -133,9 +200,7 @@ if ids is not None and len(ids) > 0:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
         for pt in corner[0]:
             aruco_corner_points.append(pt)
-    
-    print("Aruco Reference Points:", aruco_reference_points)
-    
+        
     # (Optional) Draw the convex hull of all marker corners as before
     if len(aruco_corner_points) > 0:
         aruco_corner_points = np.array(aruco_corner_points, dtype=np.int32)
