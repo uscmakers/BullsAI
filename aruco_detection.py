@@ -1,6 +1,8 @@
+import math
+
 import cv2
 import numpy as np
-import math
+
 
 def normalize_point(point, perspective_matrix):
     """Apply the perspective transform to a single point."""
@@ -35,7 +37,7 @@ def normalize_coordinates(aruco_points, led_position, board_size=(1000, 1000)):
     
     # Transform LED position
     normalized_led = normalize_point(led_position, perspective_matrix)
-    print("Normalized LED:", normalized_led)
+
     return normalized_led, perspective_matrix
 
 def calculate_dart_score(normalized_point, board_size=(1000, 1000)):
@@ -43,18 +45,15 @@ def calculate_dart_score(normalized_point, board_size=(1000, 1000)):
     Calculate dart score based on normalized coordinates.
     """
     center_x, center_y = board_size[0] // 2, board_size[1] // 2
-    print("Center:", center_x, center_y)
     distance = np.sqrt((normalized_point[0] - center_x) ** 2 + 
                        (normalized_point[1] - center_y) ** 2)
     
     dx = normalized_point[0] - center_x
     dy = center_y - normalized_point[1]  # Invert y-axis for image coordinates
-    print("dx, dy", dx, dy)
     angle = math.degrees(math.atan2(dy, dx))
     if angle < 0:
         angle += 360
 
-    print("Distance:", distance, "\nAngle:", angle)
     score = 0
     if (0 <= angle < 9) or (351 <= angle <= 360):
         score = 6
@@ -122,10 +121,7 @@ def calculate_dart_score(normalized_point, board_size=(1000, 1000)):
             score *= 2
         elif distance > double_boundary_high:
             score = 0
-        #print("triple_boundary_low, triple_boundary_high", triple_boundary_low, triple_boundary_high)
-        #print("double_boundary_low, double_boundary_high", double_boundary_low, double_boundary_high)
 
-    print("Corresponding score", score)
     return score
 
 def process_dart_throw(image, aruco_reference_points, led_position, board_size=(1000, 1000)):
@@ -160,10 +156,6 @@ def process_dart_throw(image, aruco_reference_points, led_position, board_size=(
     cv2.circle(normalized_board, normalized_led, 5, (255, 0, 0), -1)
     cv2.putText(normalized_board, "LED", (normalized_led[0]+5, normalized_led[1]), 
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-    
-    #Coordinate testing
-    #cv2.circle(normalized_board, (500, 110), 5, (255, 255, 255), -1)
-    
 
     cv2.imshow("Normalized Dartboard", normalized_board)
     cv2.waitKey(0)
