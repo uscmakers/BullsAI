@@ -2,7 +2,6 @@ import os
 import time
 
 from dotenv import load_dotenv
-
 from supabase import create_client
 
 # Load environment variables from .env file
@@ -44,11 +43,11 @@ def add_dart_score(player, score, round_number):
     except Exception as e:
         return {"success": False, "error": str(e)}
     
-if __name__ == "__main__":
-    # Example: Add a robot score
-    result = add_dart_score("robot", 20, 1)
-    print(result)
+# if __name__ == "__main__":
+#     # Example: Add a robot score
+#     result = add_dart_score("robot", 20, 1)
+#     print(result)
     
-    # Example: Add a human score
-    result = add_dart_score("human", 15, 1)
-    print(result)
+#     # Example: Add a human score
+#     result = add_dart_score("human", 15, 1)
+#     print(result)
