@@ -1,8 +1,9 @@
 import math
+import subprocess
 
 import cv2
 import numpy as np
-
+from db import add_dart_score
 
 def normalize_point(point, perspective_matrix):
     """Apply the perspective transform to a single point."""
@@ -232,6 +233,8 @@ def calculate_dart_score(normalized_point, normalized_markers):
     elif distance_fraction > 0.92:
         score = 0   # off board
 
+    add_dart_score("robot", score, 1)
+
     return score, angle, distance_fraction
 
 def draw_debug_overlay(image, center, a, led_point, angle_deg, distance_fraction, aspect_ratio=1.75):
@@ -340,7 +343,9 @@ def process_dart_throw(image, aruco_reference_points, led_position, board_size=(
 
 
 # Load image
-image = cv2.imread("test-15.jpeg")
+
+subprocess.run(["libcamera-jpeg", "-o", "test.jpg"])
+image = cv2.imread("test.jpg")
 height, width, _ = image.shape
 output_image = image.copy()
 
