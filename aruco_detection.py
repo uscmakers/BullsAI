@@ -3,7 +3,9 @@ import subprocess
 
 import cv2
 import numpy as np
+
 from db import add_dart_score
+
 
 def normalize_point(point, perspective_matrix):
     """Apply the perspective transform to a single point."""
@@ -335,9 +337,9 @@ def process_dart_throw(image, aruco_reference_points, led_position, board_size=(
     # Draw debug overlay
     overlayed = draw_debug_overlay(normalized_board, center, a, normalized_led, angle, dist_frac)
 
-    cv2.imshow("Scoring Debug Overlay", overlayed)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    # cv2.imshow("Scoring Debug Overlay", overlayed)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
     
     return normalized_led, dart_score
 
